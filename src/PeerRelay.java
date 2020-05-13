@@ -33,9 +33,7 @@ public class PeerRelay {
 
     private Socket createSocket(InetAddress ip, int port) {
         try {
-//            System.out.println("attempt to create socket: " + ip + ":" + port);
             Socket socket = new Socket(ip, port);
-//            System.out.println("created socket: " + socket.getInetAddress() + " localport: " + socket.getLocalPort() + " publicport: " + socket.getPort() + "\n");
             return socket;
         } catch (IOException ex) {
             System.err.println("Exception creating a socket: " + ex);
@@ -77,7 +75,6 @@ public class PeerRelay {
 
     //Function to receive messages from another peer through server using relay.
     private void readOnHoleRelay() throws IOException {
-//        System.out.println("Read on hole relay");
         this.readOnHole = new Thread(() -> {
             boolean connected = true;
             while (connected) {
@@ -89,10 +86,10 @@ public class PeerRelay {
                     if(message != null) {
                         System.out.println(message);
                     }
-//                    if(message == null) {
-//                        closeSocket(socketDiscussion);
-//                        connected = false;
-//                    }
+                    if(message == null) {
+                        closeSocket(socketDiscussion);
+                        connected = false;
+                    }
                 } catch (IOException ioe) {
                     ioe.printStackTrace();
                 }

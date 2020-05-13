@@ -12,9 +12,8 @@ import java.util.logging.Logger;
  */
 public class ServerMediatorRelay {
 
-    //Ports for exchanging information/relay and punching.
+    //Ports for relay
     private int tcpDiscussionPort = 9000;
-
     private ServerSocket socketConnect;
 
 
@@ -82,9 +81,7 @@ public class ServerMediatorRelay {
                         BufferedReader inConnectA = new BufferedReader(new InputStreamReader(clientAConnect.getInputStream()));
                         BufferedOutputStream outConnectA = new BufferedOutputStream(clientAConnect.getOutputStream());
                         String aliasA = inConnectA.readLine(); //get alias clients sends
-                        outConnectA.write("connected".getBytes()); //write connected to client to start write function on client
-                        outConnectA.write('\n');
-                        outConnectA.flush();
+                        sendMessage(outConnectA, "connected");
                         aliasList.add(aliasA);
                         inList.add(inConnectA);
                         outList.add(outConnectA);
@@ -102,63 +99,53 @@ public class ServerMediatorRelay {
     }
 
     //Make thread that listens to messages from peer.
-    private void connectedPeer(String alias, BufferedReader client,  BufferedOutputStream output) throws IOException {
+    private void connectedPeer(String alias, BufferedReader client,  BufferedOutputStream output) {
         new Thread(() -> {
             int index = aliasList.indexOf(alias);
-            while (connectedList.get(index)) { //Condition to check if thread has to keep running
+            while (aliasList.contains(alias) && connectedList.get(index)) { //Condition to check if thread has to keep running
                 try {
-                        String message = client.readLine(); // Message from client
-                        if(relayList.get(index) && message != null){ //if already in a relay with another client, send message to that client
-                            BufferedOutputStream connectedPeer = outList.get(aliasList.indexOf(relayConnectedList.get(index)));
-                            String msg2 = alias + ":" + message;
-                            connectedPeer.write(msg2.getBytes());
-                            connectedPeer.write('\n');
-                            connectedPeer.flush();
-                        } else if(message != null) { //check if not null
-                            System.out.println(message);
-                            String[] message2 = message.split(" ");
-                            if("/alias".equals(message2[0])) { //If input from user is /alias, output to user list of aliasses
-                                System.out.println(Arrays.toString(aliasList.toArray()));
-                                output.write(Arrays.toString(aliasList.toArray()).getBytes());
-                                output.write('\n');
-                                output.flush();
-                            }
-                            if("/connect".equals(message2[0])) {//Check if first word is equal to /connect
-                                if(message2.length > 1){ //Check length incase no alias is specified
-                                    if(alias.equals(message2[1])){ //Check for self alias else it will connect to self
-                                        output.write("Cant connect to self!".getBytes());
-                                        output.write('\n');
-                                        output.flush();
-                                    } else if(aliasList.contains(message2[1])){ //Check if list contains alias.
-                                        int targetClientIndex = aliasList.indexOf(message2[1]);
-                                        if(!relayList.get(targetClientIndex)){
-                                            connectedList.set(index, false);
-                                            connectedList.set(targetClientIndex, false);
-                                            relayList.set(index, true);
-                                            relayList.set(targetClientIndex, true);
-                                            relayConnectedList.set(index, message2[1]);
-                                            relayConnectedList.set(targetClientIndex, alias);
-                                            proceedInfosExchange(alias, client, output, message2[1], inList.get(targetClientIndex), outList.get(targetClientIndex));
-                                        } else {//if target client already connected, let client know
-                                            output.write("User already connected!".getBytes());
-                                            output.write('\n');
-                                            output.flush();
-                                        }
-                                    } else { //Else for if alias is not found
-                                        output.write("Alias not found!".getBytes());
-                                        output.write('\n');
-                                        output.flush();
+                    String message = client.readLine(); // Message from client
+                    if(relayList.get(index) && message != null){ //if already in a relay with another client, send message to that client
+                        BufferedOutputStream connectedPeer = outList.get(aliasList.indexOf(relayConnectedList.get(index)));
+                        String msg2 = alias + ":" + message;
+                        sendMessage(connectedPeer, msg2);
+                    } else if(message != null) { //check if not null
+                        System.out.println(alias + ":" + message);
+                        String[] message2 = message.split(" ");
+                        if("/alias".equals(message2[0])) { //If input from user is /alias, output to user list of aliasses
+                            System.out.println(Arrays.toString(aliasList.toArray()));
+                            sendMessage(output, Arrays.toString(aliasList.toArray()));
+                        }
+                        if("/connect".equals(message2[0])) {//Check if first word is equal to /connect
+                            if(message2.length > 1){ //Check length incase no alias is specified
+                                if(alias.equals(message2[1])){ //Check for self alias else it will connect to self
+                                    sendMessage(output, "Cant connect to self!");
+                                } else if(aliasList.contains(message2[1])){ //Check if list contains alias.
+                                    int targetClientIndex = aliasList.indexOf(message2[1]);
+                                    if(!relayList.get(targetClientIndex)){
+                                        connectedList.set(index, false);
+                                        connectedList.set(targetClientIndex, false);
+                                        relayList.set(index, true);
+                                        relayList.set(targetClientIndex, true);
+                                        relayConnectedList.set(index, message2[1]);
+                                        relayConnectedList.set(targetClientIndex, alias);
+                                        proceedInfosExchange(alias, client, output, message2[1], inList.get(targetClientIndex), outList.get(targetClientIndex));
+                                    } else {//if target client already connected, let client know
+                                        sendMessage(output, "User already connected!");
                                     }
-                                } else { //If no word found after /connect, send to client error.
-                                    output.write("No alias specified!".getBytes());
-                                    output.write('\n');
-                                    output.flush();
+                                } else { //Else for if alias is not found
+                                    sendMessage(output, "Alias not found!");
                                 }
+                            } else { //If no word found after /connect, send to client error.
+                                sendMessage(output, "No alias specified!");
                             }
                         }
+                    }
                 } catch (IOException e ) {
                     System.out.println("Lost connection with " + alias);
-                    removeClient(index);
+                    if(aliasList.contains(alias)){
+                        removeClient(index);
+                    }
                 }
             }
         }).start();
@@ -174,7 +161,7 @@ public class ServerMediatorRelay {
     }
 
     //Make thread for Peer relay, function to send message from A to B!
-    private void relayPeers(String alias, BufferedReader clientA, BufferedOutputStream clientB, String aliasB) throws IOException {
+    private void relayPeers(String alias, BufferedReader clientA, BufferedOutputStream clientB, String aliasB) {
         new Thread(() -> {
             int index = aliasList.indexOf(alias);
             int index2 = aliasList.indexOf(aliasB);
@@ -183,9 +170,7 @@ public class ServerMediatorRelay {
             while (relayList.get(index)) {
                 try {
                     if(!sent){
-                        clientB.write(userConnected.getBytes());     //Send message to peer
-                        clientB.write('\n');
-                        clientB.flush(); //empty buffer
+                        sendMessage(clientB, userConnected);
                         sent = true;
                     }
                     String message = clientA.readLine(); // Message from clientA
@@ -194,12 +179,8 @@ public class ServerMediatorRelay {
                             String msg2 = alias + ": has disconnected!";
                             String discMsg = "Disconnected from chat with " + aliasB;
                             BufferedOutputStream clientOut = outList.get(index);
-                            clientOut.write(discMsg.getBytes());
-                            clientOut.write('\n');
-                            clientOut.flush();
-                            clientB.write(msg2.getBytes());     //Send message to peer
-                            clientB.write('\n');
-                            clientB.flush(); //empty buffer
+                            sendMessage(clientOut, discMsg);
+                            sendMessage(clientB, msg2);
                             relayList.set(index, false);
                             relayList.set(index2, false);
                             connectedList.set(index, true);
@@ -209,9 +190,7 @@ public class ServerMediatorRelay {
                         } else if(relayList.get(index)) {
                             String msg2 = alias + ":" + message;
                             System.out.println(msg2);
-                            clientB.write(msg2.getBytes());     //Send message to peer
-                            clientB.write('\n');
-                            clientB.flush(); //empty buffer
+                            sendMessage(clientB, msg2);
                         }
                     }
                 } catch (IOException e ) {
@@ -223,11 +202,7 @@ public class ServerMediatorRelay {
                         relayList.set(index2, false);
                         connectedList.set(index2, true);
                     }
-                    try {
-                        connectedPeer(aliasB, inList.get(index2), clientB);
-                    } catch (IOException e2 ) {
-                        System.out.println(e2);
-                    }
+                    connectedPeer(aliasB, inList.get(index2), clientB);
                     removeClient(index);
                 }
             }
@@ -241,6 +216,7 @@ public class ServerMediatorRelay {
         outList.remove(index);
         connectedList.remove(index);
         relayList.remove(index);
+        relayConnectedList.remove(index);
     }
 
     //Function to enter commands in server console to initiate shutdown
@@ -263,6 +239,13 @@ public class ServerMediatorRelay {
         this.listen.start();
     }
 
+    private void sendMessage(BufferedOutputStream stream, String message)throws IOException {
+        byte[] sendData = message.getBytes();
+        stream.write(sendData);
+        stream.write('\n');
+        stream.flush();
+    }
+
 
     //Functie om de server af te sl
     private void exit(){
@@ -270,7 +253,7 @@ public class ServerMediatorRelay {
             ListIterator<BufferedOutputStream> iterator = outList.listIterator(); //get Iterator of every connected peer
             while(iterator.hasNext()){
                 BufferedOutputStream out = iterator.next();
-                out.write("Server shutting down!".getBytes());     //Send message to peer
+                out.write("Server shutting down!".getBytes());     //Send message to peer that server is shutting down
                 out.write('\n');
                 out.flush(); //empty buffer
             }
